@@ -17,6 +17,17 @@ import (
 // Callers should check with errors.Is and prompt the user to run Login.
 var ErrNotLoggedIn = errors.New("codexauth: not logged in")
 
+// ErrPlanNotIncluded marks Codex API responses where the authenticated account
+// does not have Codex subscription access.
+var ErrPlanNotIncluded = errors.New("codexauth: plan not included")
+
+// ErrQuotaExceeded marks Codex API responses where the authenticated account
+// has exhausted its Codex quota.
+var ErrQuotaExceeded = errors.New("codexauth: quota exceeded")
+
+// ErrRefreshFailed marks failures while refreshing stored Codex credentials.
+var ErrRefreshFailed = errors.New("codexauth: refresh failed")
+
 // httpDoer is the minimal interface satisfied by *http.Client, allowing tests
 // to replace logoutHTTPClient without importing net/http/httptest.
 type httpDoer interface {

@@ -150,6 +150,25 @@ func TestHTTPClient_ErrNotLoggedIn(t *testing.T) {
 	}
 }
 
+func TestAuthSentinelsAreDistinct(t *testing.T) {
+	sentinels := []error{
+		ErrNotLoggedIn,
+		ErrPlanNotIncluded,
+		ErrQuotaExceeded,
+		ErrRefreshFailed,
+	}
+	for i, left := range sentinels {
+		if left == nil {
+			t.Fatalf("sentinel %d is nil", i)
+		}
+		for j, right := range sentinels {
+			if i != j && errors.Is(left, right) {
+				t.Fatalf("sentinel %d unexpectedly matches sentinel %d", i, j)
+			}
+		}
+	}
+}
+
 // TestHTTPClient_URLRewrite verifies that the returned *http.Client rewrites
 // requests to the Codex Responses-API endpoint (chatgpt.com).
 func TestHTTPClient_URLRewrite(t *testing.T) {
