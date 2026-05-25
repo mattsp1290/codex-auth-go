@@ -1,0 +1,44 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gocyclo
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - unused
+
+  settings:
+    gocyclo:
+      min-complexity: 18
+    revive:
+      rules:
+        - name: exported
+          arguments: ["disableStutteringCheck"]
+
+  exclusions:
+    rules:
+      - path: "_test\\.go"
+        linters: [errcheck]
+        text: "fmt\\.Fprintf?"
+      - path: "_test\\.go"
+        linters: [errcheck]
+        source: "defer.*\\.Close\\(\\)"
+      - path: "_test\\.go"
+        linters: [revive]
+        text: "unused-parameter"
+      - path: "_test\\.go"
+        linters: [revive]
+        text: "redefines-builtin-id.*cap"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
