@@ -1,6 +1,6 @@
 module github.com/mattsp1290/codex-auth-go
 
-go 1.25.0
+go 1.25.5
 
 require (
 	github.com/gofrs/flock v0.13.0

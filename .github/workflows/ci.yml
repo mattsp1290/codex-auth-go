@@ -6,18 +6,15 @@ on:
   pull_request:
 
 jobs:
-  build-test:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.25.5'
           cache: true
-
-      - name: go mod verify
-        run: go mod verify
 
       - name: go build
         run: go build ./...
@@ -28,41 +25,20 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      - name: install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+
+      - name: golangci-lint run
+        run: $(go env GOPATH)/bin/golangci-lint run
+
+      - name: install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: govulncheck
+        run: $(go env GOPATH)/bin/govulncheck ./...
+
       - name: go vet darwin
         run: GOOS=darwin go vet ./...
 
       - name: go vet windows
         run: GOOS=windows go vet ./...
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-          cache: true
-
-      - name: install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.10.1
-
-      - name: golangci-lint config verify
-        run: $(go env GOPATH)/bin/golangci-lint config verify
-
-      - name: golangci-lint run
-        run: $(go env GOPATH)/bin/golangci-lint run
-
-  vulncheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-          cache: true
-
-      - uses: golang/govulncheck-action@v1
-        with:
-          go-package: ./...

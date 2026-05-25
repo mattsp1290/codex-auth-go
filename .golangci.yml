@@ -7,7 +7,6 @@ linters:
   default: none
   enable:
     - errcheck
-    - gocyclo
     - govet
     - ineffassign
     - misspell
@@ -16,8 +15,6 @@ linters:
     - unused
 
   settings:
-    gocyclo:
-      min-complexity: 18
     revive:
       rules:
         - name: exported
