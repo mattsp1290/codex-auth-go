@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "codex_auth_go",
+  "project_id": "a1ca2690-6ff1-4047-a977-0abf5225f5c3"
+}
