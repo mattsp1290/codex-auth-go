@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Added `ClassifyCodexError` to map Codex API plan and quota error codes to
+  exported sentinels.
+
 ## [0.1.1] - 2026-05-26
 
 ### Added
