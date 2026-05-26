@@ -20,6 +20,7 @@ type Client struct {
 	callbackPort int
 	logger       *slog.Logger
 	pathFunc     func() (string, error)
+	devicePrompt func(verificationURI, userCode string) error
 
 	browserAvailableCheck func() error
 	loginBrowserFn        func(context.Context) (Credentials, error)
@@ -42,6 +43,7 @@ func NewClient(opts Options) *Client {
 		appName:               opts.AppName,
 		callbackPort:          opts.CallbackPort,
 		logger:                opts.Logger,
+		devicePrompt:          opts.DevicePrompt,
 		browserAvailableCheck: canOpenBrowserNative,
 		logoutHTTPClient:      newLogoutHTTPClient(),
 		logoutStderr:          os.Stderr,
@@ -68,6 +70,10 @@ type Options struct {
 	CallbackPort int
 	// Logger receives structured diagnostics. Nil defaults to slog.Default().
 	Logger *slog.Logger
+	// DevicePrompt is called during device login after a safe user_code is
+	// received and before polling begins. Nil preserves the default stderr
+	// prompt.
+	DevicePrompt func(verificationURI, userCode string) error
 }
 
 // StatusInfo describes the local credential-store state for a Client.

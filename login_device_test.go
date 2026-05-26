@@ -146,6 +146,85 @@ func TestLoginDevice_HappyPath(t *testing.T) {
 	}
 }
 
+func TestClientLoginDevice_CustomPrompt(t *testing.T) {
+	promptCalls := 0
+	var gotURI, gotCode string
+	pollCount := 0
+	c := NewClient(Options{
+		AppName: "advisor",
+		DevicePrompt: func(verificationURI, userCode string) error {
+			promptCalls++
+			gotURI = verificationURI
+			gotCode = userCode
+			return nil
+		},
+	})
+	c.pathFunc = func() (string, error) { return t.TempDir() + "/auth.json", nil }
+
+	h := newDeviceTestHarness(
+		func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, `{"device_auth_id":"DAU_prompt","user_code":"PROM-1234","interval":"1"}`)
+		},
+		func(w http.ResponseWriter, r *http.Request) {
+			pollCount++
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"authorization_code":"ac-prompt","code_verifier":"cv-prompt"}`)
+		},
+		validTokenHandler(),
+	)
+	defer h.close()
+
+	if _, err := c.LoginDevice(context.Background()); err != nil {
+		t.Fatalf("LoginDevice error: %v", err)
+	}
+	if promptCalls != 1 {
+		t.Fatalf("prompt calls = %d, want 1", promptCalls)
+	}
+	if gotURI != Issuer+"/codex/device" {
+		t.Fatalf("verificationURI = %q, want %q", gotURI, Issuer+"/codex/device")
+	}
+	if gotCode != "PROM-1234" {
+		t.Fatalf("userCode = %q, want PROM-1234", gotCode)
+	}
+	if h.stderrBuf.Len() != 0 {
+		t.Fatalf("stderr prompt = %q, want empty when custom prompt is used", h.stderrBuf.String())
+	}
+	if pollCount != 1 {
+		t.Fatalf("poll count = %d, want 1", pollCount)
+	}
+}
+
+func TestClientLoginDevice_CustomPromptErrorStopsFlow(t *testing.T) {
+	promptErr := errors.New("display unavailable")
+	pollCount := 0
+	c := NewClient(Options{
+		AppName: "advisor",
+		DevicePrompt: func(string, string) error {
+			return promptErr
+		},
+	})
+
+	h := newDeviceTestHarness(
+		func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, `{"device_auth_id":"DAU_prompt","user_code":"PROM-1234","interval":"1"}`)
+		},
+		func(w http.ResponseWriter, r *http.Request) {
+			pollCount++
+			w.WriteHeader(http.StatusOK)
+		},
+		nil,
+	)
+	defer h.close()
+
+	_, err := c.LoginDevice(context.Background())
+	if !errors.Is(err, promptErr) {
+		t.Fatalf("errors.Is(err, promptErr) = false; err = %v", err)
+	}
+	if pollCount != 0 {
+		t.Fatalf("poll count = %d, want 0 after prompt error", pollCount)
+	}
+}
+
 // TestLoginDevice_404Retried verifies that HTTP 404 from the poll endpoint is
 // treated as transient (retried), not fatal.
 func TestLoginDevice_404Retried(t *testing.T) {

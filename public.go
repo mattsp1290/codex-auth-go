@@ -44,7 +44,7 @@ var (
 	// loginBrowserFn and loginDeviceFn are vars so Login tests can stub the
 	// inner flows without spinning up a full OAuth server stack.
 	loginBrowserFn = func(ctx context.Context) (Credentials, error) { return loginBrowser(ctx, Save) }
-	loginDeviceFn  = func(ctx context.Context) (Credentials, error) { return loginDevice(ctx, Save) }
+	loginDeviceFn  = func(ctx context.Context) (Credentials, error) { return loginDevice(ctx, Save, defaultDevicePrompt) }
 
 	// logoutHTTPClient performs the RFC 7009 revocation POST. CheckRedirect is
 	// set to refuse all redirects so the refresh token in the POST body cannot

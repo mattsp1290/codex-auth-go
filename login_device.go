@@ -32,6 +32,11 @@ var (
 // Tests override this to suppress or capture the output.
 var deviceStderr io.Writer = os.Stderr
 
+func defaultDevicePrompt(verificationURI, userCode string) error {
+	_, err := fmt.Fprintf(deviceStderr, "Open %s in a browser and enter code: %s\n", verificationURI, userCode)
+	return err
+}
+
 // userCodeRe validates the user_code from the device init response before
 // printing it to stderr. Rejects strings containing shell metacharacters or
 // ANSI escape sequences that could be injected by a hostile server.
@@ -110,10 +115,14 @@ func LoginDevice(ctx context.Context) (Credentials, error) {
 // LoginDevice implements OpenAI's headless device-authorization flow for this
 // client.
 func (c *Client) LoginDevice(ctx context.Context) (Credentials, error) {
-	return loginDevice(ctx, c.save)
+	return loginDevice(ctx, c.save, c.devicePrompt)
 }
 
-func loginDevice(ctx context.Context, saveCreds func(AuthFile) error) (Credentials, error) {
+func loginDevice(ctx context.Context, saveCreds func(AuthFile) error, prompt func(string, string) error) (Credentials, error) {
+	if prompt == nil {
+		prompt = defaultDevicePrompt
+	}
+
 	// Step 1: request a user code.
 	dc, err := deviceInit(ctx)
 	if err != nil {
@@ -129,7 +138,10 @@ func loginDevice(ctx context.Context, saveCreds func(AuthFile) error) (Credentia
 	}
 
 	// Step 3: prompt user.
-	_, _ = fmt.Fprintf(deviceStderr, "Open %s/codex/device in a browser and enter code: %s\n", Issuer, dc.UserCode)
+	verificationURI := Issuer + "/codex/device"
+	if err := prompt(verificationURI, dc.UserCode); err != nil {
+		return Credentials{}, fmt.Errorf("codexauth: device prompt: %w", err)
+	}
 
 	// Step 4: parse interval (string per wire); add 3 s safety margin.
 	pollInterval := time.Duration(parsePollInterval(dc.Interval))*time.Second + deviceSafetyMargin

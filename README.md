@@ -61,6 +61,8 @@ device flow so SSH and headless environments still work.
 Use `Client.Login(ctx, true)` to force the device flow. The device flow prints a
 browser URL and user code to stderr, polls until authorization succeeds or the
 device code expires, exchanges the authorization code, and stores credentials.
+Set `Options.DevicePrompt` to render the device URL and user code in your own
+UI instead of using the default stderr prompt.
 
 Package-level `Login`, `LoginBrowser`, `LoginDevice`, `Logout`, and
 `HTTPClient` remain as deprecated advisor-compatibility wrappers. New code

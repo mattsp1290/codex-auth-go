@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Added `ClassifyCodexError` to map Codex API plan and quota error codes to
   exported sentinels.
+- Added `Options.DevicePrompt` so callers can render device-flow user-code
+  prompts in their own UI.
 
 ## [0.1.1] - 2026-05-26
 
