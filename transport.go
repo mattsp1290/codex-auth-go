@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"runtime"
 	"sync"
 	"time"
@@ -34,12 +35,19 @@ const (
 // into outgoing requests. It refreshes stale credentials on demand, collapsing
 // concurrent refreshes into a single network round-trip via a singleflight group.
 //
-// Every outbound request is rewritten to the Codex Responses-API endpoint at
-// chatgpt.com/backend-api/codex/responses and decorated with the OAuth bearer
-// token and Codex-specific headers (see RoundTrip and decorateHeaders).
+// Every outbound request is rewritten to the Codex Responses-API endpoint
+// (default chatgpt.com/backend-api/codex/responses; overridable via
+// Options.Endpoint) and decorated with the OAuth bearer token and Codex-specific
+// headers (see RoundTrip and decorateHeaders).
 type codexTransport struct {
 	base http.RoundTripper
 	sf   singleflight.Group
+
+	// endpoint, when non-nil, overrides the default Codex Responses-API URL that
+	// every request is rewritten to. Nil → defaultCodexURL. The scheme is taken
+	// from the override (a loopback test fake is cleartext http), so the previous
+	// hard-coded "https" no longer applies under override.
+	endpoint *url.URL
 
 	// mu protects creds.
 	mu    sync.RWMutex
@@ -234,7 +242,8 @@ func (t *codexTransport) logInvalidGrant(branchID string, hasCredsAfter bool, er
 // RoundTrip implements http.RoundTripper. For every request it:
 //  1. Ensures credentials are fresh (refreshing if needed).
 //  2. Clones the caller's request so the original is never mutated.
-//  3. Rewrites the URL to the Codex Responses-API endpoint.
+//  3. Rewrites the URL to the Codex Responses-API endpoint (defaultCodexURL
+//     unless overridden via Options.Endpoint).
 //  4. Injects the OAuth bearer token.
 //  5. Delegates to t.base (falling back to http.DefaultTransport if nil).
 //
@@ -264,13 +273,17 @@ func (t *codexTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	// Rewrite to the Codex endpoint. Set individual URL fields (not a new *url.URL)
 	// so any query string the caller provided is preserved.
-	clone.URL.Scheme = "https"
-	clone.URL.Host = "chatgpt.com"
-	clone.URL.Path = "/backend-api/codex/responses"
+	ep := t.endpoint
+	if ep == nil {
+		ep = defaultCodexURL
+	}
+	clone.URL.Scheme = ep.Scheme // from override — must NOT be forced to "https"
+	clone.URL.Host = ep.Host
+	clone.URL.Path = ep.Path
 	clone.URL.RawPath = "" // use canonical Path
 	clone.URL.Opaque = ""  // prevent opaque URIs from bypassing the rewrite
-	clone.URL.User = nil   // don't carry caller credentials to chatgpt.com
-	clone.Host = "chatgpt.com"
+	clone.URL.User = nil   // don't carry caller credentials onward
+	clone.Host = ep.Host
 
 	// Read creds after ensureFresh so we always inject the freshest token.
 	t.mu.RLock()

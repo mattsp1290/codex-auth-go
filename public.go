@@ -178,16 +178,22 @@ func HTTPClient(_ context.Context) (*http.Client, error) {
 // HTTPClient returns an *http.Client pre-configured for this client's stored
 // Codex credentials.
 func (c *Client) HTTPClient(_ context.Context) (*http.Client, error) {
-	return httpClientForApp(c.appName, c.logger, c.load, c.save, c.delete)
+	return httpClientForApp(c.appName, c.endpoint, c.logger, c.load, c.save, c.delete)
 }
 
 func httpClientForApp(
 	appName string,
+	rawEndpoint string,
 	logger *slog.Logger,
 	loadCreds func() (AuthFile, error),
 	saveCreds func(AuthFile) error,
 	deleteCreds func(string) error,
 ) (*http.Client, error) {
+	endpoint, err := parseEndpoint(rawEndpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	af, err := loadCreds()
 	if err != nil {
 		return nil, fmt.Errorf("codexauth: HTTPClient: %w", err)
@@ -200,6 +206,7 @@ func httpClientForApp(
 	tr := newCodexTransportForClient(appName, logger, creds, func(c Credentials) error {
 		return saveCreds(AuthFile{OpenAI: &c})
 	})
+	tr.endpoint = endpoint
 	tr.wipeCreds = func() error { return deleteCreds("openai") }
 	tr.loadCreds = func() (Credentials, error) {
 		loaded, loadErr := loadCreds()

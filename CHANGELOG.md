@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-06
+
+### Added
+
+- Added `Options.Endpoint` to override the Responses-API URL the transport
+  rewrites every request to. Empty preserves the default
+  (`https://chatgpt.com/backend-api/codex/responses`). A loopback-only
+  cleartext `http://` safety rail prevents bearer tokens from being sent in
+  plaintext to non-loopback hosts; `https://` to any host is allowed.
+  New exported sentinel: `ErrInsecureEndpoint`.
+
+  **Security note:** the safety rail guards only cleartext. An `https://`
+  override sends the real bearer token to whatever host is configured, with no
+  allowlist or certificate pinning. This is a deliberate design decision.
+
+- Added `Options.CredentialPath` to override the `auth.json` location used by
+  a `Client`. Empty preserves the default
+  (`os.UserConfigDir()/<AppName>/auth.json`). Useful for staging fixture
+  credentials in tests without touching `HOME`/`XDG`.
+
+  **Side effect on write:** if credentials are ever written (real refresh,
+  `Save`, `Logout`), the parent directory is `MkdirAll`'d and `chmod`'d to
+  `0700`. Use a dedicated directory, not a shared one.
+
+### Notes
+
+- Additive and non-breaking. With both fields empty, behavior is byte-identical
+  to v0.2.0 (verified against the existing transport and public test assertions:
+  host, scheme, path, `Authorization`, `originator`, `session_id`, query
+  preservation).
+
 ## [0.2.0] - 2026-05-26
 
 ### Added

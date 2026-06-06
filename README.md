@@ -92,6 +92,33 @@ auth := codexauth.NewClient(codexauth.Options{AppName: "local-symphony"})
 The deprecated package-level wrappers use `advisor` intentionally so existing
 advisor installations keep reading the same auth.json path without a re-login.
 
+## Endpoint override (hermetic tests)
+
+`Options.Endpoint` overrides the Responses-API URL the transport rewrites every
+request to. Use it to point the real transport at a loopback SSE fake in tests:
+
+```go
+auth := codexauth.NewClient(codexauth.Options{
+    AppName:        "my-agent",
+    Endpoint:       "http://127.0.0.1:PORT/backend/responses",
+    CredentialPath: "/tmp/test-fixtures/auth.json",
+})
+httpClient, err := auth.HTTPClient(ctx)
+```
+
+`CredentialPath` overrides the `auth.json` location, so you can stage a fixture
+credential file without touching `HOME`/`XDG`. The file must contain a valid
+`openai` entry; a file with no `openai` entry returns `ErrNotLoggedIn`.
+
+**Safety rail:** cleartext `http://` is permitted only for loopback hosts
+(`127.0.0.0/8`, `::1`, `localhost`) so bearer tokens are never sent in
+plaintext to a remote host. `HTTPClient` returns `ErrInsecureEndpoint` for any
+other `http://` endpoint. `https://` to any host is always allowed.
+
+**Note on `CredentialPath` and writes:** if credentials are ever written (a
+real token refresh, `Save`, or `Logout`), the parent directory is `MkdirAll`'d
+and `chmod`'d to `0700`. Use a dedicated directory, not a shared one.
+
 ## Security
 
 JWT handling is passive. `ExtractAccountID` decodes claims from an accepted
