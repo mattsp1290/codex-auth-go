@@ -21,6 +21,7 @@ type Client struct {
 	logger       *slog.Logger
 	pathFunc     func() (string, error)
 	devicePrompt func(verificationURI, userCode string) error
+	endpoint     string // raw Options.Endpoint; parsed+validated in HTTPClient
 
 	browserAvailableCheck func() error
 	loginBrowserFn        func(context.Context) (Credentials, error)
@@ -44,12 +45,16 @@ func NewClient(opts Options) *Client {
 		callbackPort:          opts.CallbackPort,
 		logger:                opts.Logger,
 		devicePrompt:          opts.DevicePrompt,
+		endpoint:              opts.Endpoint,
 		browserAvailableCheck: canOpenBrowserNative,
 		logoutHTTPClient:      newLogoutHTTPClient(),
 		logoutStderr:          os.Stderr,
 	}
 	c.loginBrowserFn = c.LoginBrowser
 	c.loginDeviceFn = c.LoginDevice
+	if opts.CredentialPath != "" {
+		c.pathFunc = func() (string, error) { return opts.CredentialPath, nil }
+	}
 	return c
 }
 
@@ -74,6 +79,38 @@ type Options struct {
 	// received and before polling begins. Nil preserves the default stderr
 	// prompt.
 	DevicePrompt func(verificationURI, userCode string) error
+	// Endpoint overrides the Responses-API URL that the transport rewrites every
+	// request to. Empty preserves the default (CodexEndpoint,
+	// https://chatgpt.com/backend-api/codex/responses). The value is parsed and
+	// validated lazily in HTTPClient (not NewClient): it must be an absolute URL
+	// with scheme http or https. As a safety rail, a cleartext http:// endpoint is
+	// permitted only for loopback hosts (127.0.0.0/8, ::1, localhost) so a bearer
+	// token is never sent in plaintext to a remote host.
+	//
+	// Note: only Scheme, Host, and Path from Endpoint are used. Any query string
+	// embedded in Endpoint is silently dropped; the caller's query string is
+	// preserved unchanged.
+	//
+	// Redirect caveat: when Endpoint uses cleartext http:// (loopback only), the
+	// server must respond directly (e.g. 200 with the SSE body) and must NOT issue
+	// a 3xx redirect. The client's redirect policy hard-refuses any non-https
+	// redirect hop and returns "codexauth: refusing non-https redirect". This is
+	// intentional defense-in-depth, not a bug — design your test fake accordingly.
+	Endpoint string
+	// CredentialPath overrides the on-disk auth.json location. Empty preserves the
+	// default, os.UserConfigDir()/<AppName>/auth.json (where <AppName> defaults to
+	// "codex" for explicit NewClient callers). When set, all credential reads and
+	// writes for this client target the given path — useful for staging a fixture
+	// credential file in tests without touching HOME/XDG.
+	//
+	// WARNING: point this at a file inside a directory you own EXCLUSIVELY. On any
+	// write (Save/Logout/refresh) the PARENT DIRECTORY of this path is MkdirAll'd
+	// AND its permissions are unconditionally overwritten to 0700 — even if the
+	// directory already existed. Pointing CredentialPath at a file in a shared
+	// directory (e.g. /tmp/auth.json, $HOME/auth.json) will re-permission that
+	// directory to owner-only on first write. Use t.TempDir() in tests.
+	// Reads do not mutate anything.
+	CredentialPath string
 }
 
 // StatusInfo describes the local credential-store state for a Client.

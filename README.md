@@ -92,6 +92,43 @@ auth := codexauth.NewClient(codexauth.Options{AppName: "local-symphony"})
 The deprecated package-level wrappers use `advisor` intentionally so existing
 advisor installations keep reading the same auth.json path without a re-login.
 
+## Endpoint override (hermetic tests)
+
+`Options.Endpoint` overrides the Responses-API URL the transport rewrites every
+request to. Use it to point the real transport at a loopback SSE fake in tests:
+
+```go
+// srv is an httptest.Server — replace srv.URL with your fake's address.
+auth := codexauth.NewClient(codexauth.Options{
+    AppName:        "my-agent",
+    Endpoint:       srv.URL + "/backend/responses", // e.g. http://127.0.0.1:PORT/...
+    CredentialPath: fixtureAuthPath,                // path to a staged auth.json
+})
+httpClient, err := auth.HTTPClient(ctx)
+```
+
+`CredentialPath` overrides the `auth.json` location, so you can stage a fixture
+credential file without touching `HOME`/`XDG`. The file must contain a valid
+`openai` entry; a file with no `openai` entry returns `ErrNotLoggedIn`.
+
+**Safety rail:** cleartext `http://` is permitted only for loopback hosts
+(`127.0.0.0/8`, `::1`, `localhost`) so bearer tokens are never sent in
+plaintext to a remote host. `HTTPClient` returns `ErrInsecureEndpoint` for any
+other `http://` endpoint. `https://` to any host is always allowed.
+
+**Redirect caveat:** when using a loopback `http://` endpoint, your fake server
+must respond directly (e.g. `200` with the SSE body). The client hard-refuses
+any non-https redirect and returns `"codexauth: refusing non-https redirect"` —
+by design. A test fake that issues a `3xx` will surface this error, not a
+`200`. Respond directly.
+
+**Warning on `CredentialPath` and writes:** on any write (token refresh, `Save`,
+`Logout`), the **parent directory** of `CredentialPath` is `MkdirAll`'d AND its
+permissions are unconditionally overwritten to `0700` — even if the directory
+already existed. Pointing `CredentialPath` at a file in a shared directory
+(`/tmp`, `$HOME`) will re-permission that directory on first write. Use
+`t.TempDir()` in tests or any directory you own exclusively.
+
 ## Security
 
 JWT handling is passive. `ExtractAccountID` decodes claims from an accepted
