@@ -108,6 +108,39 @@ func TestHTTPClient_EndpointOverride(t *testing.T) {
 	}
 }
 
+// TestHTTPClient_EndpointOverride_QueryContract verifies the two-part query-string
+// guarantee documented in Options.Endpoint: (a) any query embedded in the Endpoint
+// URL itself is silently dropped; (b) the caller's own query string is preserved.
+func TestHTTPClient_EndpointOverride_QueryContract(t *testing.T) {
+	path := writeFixtureAuth(t, Credentials{Access: "fake-access", AccountID: "acct-123", Expires: farFuture()})
+
+	c := NewClient(Options{
+		AppName:        "advisor",
+		Endpoint:       "http://127.0.0.1:1/backend/responses?dropme=1", // embedded query must be dropped
+		CredentialPath: path,
+	})
+	hc, err := c.HTTPClient(context.Background())
+	if err != nil {
+		t.Fatalf("HTTPClient: %v", err)
+	}
+	cap := &captureTransport{}
+	hc.Transport.(*codexTransport).base = cap
+
+	req, _ := http.NewRequest(http.MethodPost, "https://api.openai.com/v1/responses?keep=2", nil)
+	if _, err := hc.Do(req); err != nil {
+		t.Fatalf("hc.Do: %v", err)
+	}
+	got := cap.last()
+	if got == nil {
+		t.Fatal("base transport was not called")
+		return
+	}
+	if got.URL.RawQuery != "keep=2" {
+		t.Errorf("RawQuery = %q, want %q (caller query preserved, endpoint query dropped)",
+			got.URL.RawQuery, "keep=2")
+	}
+}
+
 // ── B. Safety rail (acceptance #3) ───────────────────────────────────────────
 
 func TestParseEndpoint(t *testing.T) {
@@ -128,6 +161,16 @@ func TestParseEndpoint(t *testing.T) {
 		{name: "ftp scheme", input: "ftp://host/x", wantErr: true},
 		{name: "relative path", input: "relative/path", wantErr: true},
 		{name: "http 0.0.0.0 rejected", input: "http://0.0.0.0:9/x", wantErr: true, errIs: ErrInsecureEndpoint},
+		// isLoopbackHost normalization: uppercase and trailing FQDN dot are accepted
+		{name: "http LOCALHOST uppercase ok", input: "http://LOCALHOST:9/x"},
+		{name: "http localhost trailing dot ok", input: "http://localhost.:9/x"},
+		// Documented rejections: non-standard loopback encodings that bypass naive checks
+		{name: "http 127.1 shorthand rejected", input: "http://127.1:9/x", wantErr: true, errIs: ErrInsecureEndpoint},
+		{name: "http decimal ip rejected", input: "http://2130706433:9/x", wantErr: true, errIs: ErrInsecureEndpoint},
+		{name: "http localhost substring rejected", input: "http://notlocalhost.evil/x", wantErr: true, errIs: ErrInsecureEndpoint},
+		// IPv4-mapped IPv6 loopback: Go's net.ParseIP("::ffff:127.0.0.1") returns 127.0.0.1
+		// and IsLoopback()=true, so this form is intentionally accepted.
+		{name: "http ipv4-mapped ipv6 loopback ok", input: "http://[::ffff:127.0.0.1]:9/x"},
 	}
 
 	for _, tc := range cases {
@@ -225,7 +268,8 @@ func TestHTTPClient_NoRefreshOnFarFuture(t *testing.T) {
 	t.Cleanup(codexSrv.Close)
 
 	path := writeFixtureAuth(t, Credentials{
-		Access:  "no-refresh-token",
+		Access:  "no-refresh-needed",
+		Refresh: "would-be-used-if-refresh-fired", // present — ensures expiry is the sole reason refresh is skipped
 		Expires: farFuture(),
 	})
 	c := NewClient(Options{

@@ -63,5 +63,8 @@ func isLoopbackHost(host string) bool {
 		return true
 	}
 	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback() // 127.0.0.0/8 and ::1
+	// IsLoopback covers 127.0.0.0/8 and ::1. Go's net.ParseIP also maps
+	// ::ffff:127.x.x.x to 127.x.x.x before the check, so IPv4-mapped IPv6
+	// loopback (e.g. ::ffff:127.0.0.1) is intentionally accepted.
+	return ip != nil && ip.IsLoopback()
 }

@@ -90,16 +90,26 @@ type Options struct {
 	// Note: only Scheme, Host, and Path from Endpoint are used. Any query string
 	// embedded in Endpoint is silently dropped; the caller's query string is
 	// preserved unchanged.
+	//
+	// Redirect caveat: when Endpoint uses cleartext http:// (loopback only), the
+	// server must respond directly (e.g. 200 with the SSE body) and must NOT issue
+	// a 3xx redirect. The client's redirect policy hard-refuses any non-https
+	// redirect hop and returns "codexauth: refusing non-https redirect". This is
+	// intentional defense-in-depth, not a bug — design your test fake accordingly.
 	Endpoint string
 	// CredentialPath overrides the on-disk auth.json location. Empty preserves the
-	// default, os.UserConfigDir()/<AppName>/auth.json. When set, all credential
-	// reads and writes for this client target the given path — useful for staging a
-	// fixture credential file in tests without touching HOME/XDG.
+	// default, os.UserConfigDir()/<AppName>/auth.json (where <AppName> defaults to
+	// "codex" for explicit NewClient callers). When set, all credential reads and
+	// writes for this client target the given path — useful for staging a fixture
+	// credential file in tests without touching HOME/XDG.
 	//
-	// Point this at a file in a DEDICATED directory, not a shared one. On any write
-	// (Save/Logout-delete, or a token refresh) the parent directory is MkdirAll'd
-	// and chmod'd to 0700, and the atomic rename replaces whatever (including a
-	// symlink) sits at the path. Reads do not mutate anything.
+	// WARNING: point this at a file inside a directory you own EXCLUSIVELY. On any
+	// write (Save/Logout/refresh) the PARENT DIRECTORY of this path is MkdirAll'd
+	// AND its permissions are unconditionally overwritten to 0700 — even if the
+	// directory already existed. Pointing CredentialPath at a file in a shared
+	// directory (e.g. /tmp/auth.json, $HOME/auth.json) will re-permission that
+	// directory to owner-only on first write. Use t.TempDir() in tests.
+	// Reads do not mutate anything.
 	CredentialPath string
 }
 

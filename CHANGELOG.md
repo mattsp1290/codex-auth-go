@@ -26,9 +26,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`os.UserConfigDir()/<AppName>/auth.json`). Useful for staging fixture
   credentials in tests without touching `HOME`/`XDG`.
 
-  **Side effect on write:** if credentials are ever written (real refresh,
-  `Save`, `Logout`), the parent directory is `MkdirAll`'d and `chmod`'d to
-  `0700`. Use a dedicated directory, not a shared one.
+  **Warning on write-side effects:** on any write (real refresh, `Save`,
+  `Logout`) the **parent directory** of `CredentialPath` is `MkdirAll`'d AND
+  its permissions are unconditionally overwritten to `0700` — even if the
+  directory already existed. Never point `CredentialPath` at a file inside a
+  shared directory (`/tmp`, `$HOME`): the first write will re-permission that
+  directory. Use a dedicated directory (e.g. `t.TempDir()` in tests).
 
 ### Notes
 

@@ -98,10 +98,11 @@ advisor installations keep reading the same auth.json path without a re-login.
 request to. Use it to point the real transport at a loopback SSE fake in tests:
 
 ```go
+// srv is an httptest.Server — replace srv.URL with your fake's address.
 auth := codexauth.NewClient(codexauth.Options{
     AppName:        "my-agent",
-    Endpoint:       "http://127.0.0.1:PORT/backend/responses",
-    CredentialPath: "/tmp/test-fixtures/auth.json",
+    Endpoint:       srv.URL + "/backend/responses", // e.g. http://127.0.0.1:PORT/...
+    CredentialPath: fixtureAuthPath,                // path to a staged auth.json
 })
 httpClient, err := auth.HTTPClient(ctx)
 ```
@@ -115,9 +116,18 @@ credential file without touching `HOME`/`XDG`. The file must contain a valid
 plaintext to a remote host. `HTTPClient` returns `ErrInsecureEndpoint` for any
 other `http://` endpoint. `https://` to any host is always allowed.
 
-**Note on `CredentialPath` and writes:** if credentials are ever written (a
-real token refresh, `Save`, or `Logout`), the parent directory is `MkdirAll`'d
-and `chmod`'d to `0700`. Use a dedicated directory, not a shared one.
+**Redirect caveat:** when using a loopback `http://` endpoint, your fake server
+must respond directly (e.g. `200` with the SSE body). The client hard-refuses
+any non-https redirect and returns `"codexauth: refusing non-https redirect"` —
+by design. A test fake that issues a `3xx` will surface this error, not a
+`200`. Respond directly.
+
+**Warning on `CredentialPath` and writes:** on any write (token refresh, `Save`,
+`Logout`), the **parent directory** of `CredentialPath` is `MkdirAll`'d AND its
+permissions are unconditionally overwritten to `0700` — even if the directory
+already existed. Pointing `CredentialPath` at a file in a shared directory
+(`/tmp`, `$HOME`) will re-permission that directory on first write. Use
+`t.TempDir()` in tests or any directory you own exclusively.
 
 ## Security
 
