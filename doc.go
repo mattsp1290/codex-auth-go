@@ -1,10 +1,10 @@
 // Package codexauth authenticates ChatGPT subscription-backed Codex clients.
 //
 // The package provides a focused Go library for obtaining an *http.Client that
-// calls the Codex Responses endpoint with a refreshing bearer token. It is not
-// a CLI, daemon, JSON-RPC server, credential broker, Eino ChatModel wrapper, or
-// provider-classification layer; those are outside the v0.1.0 scope described
-// in the extraction plan.
+// calls the Codex Responses endpoint with a refreshing bearer token and for
+// fetching the authenticated account's picker-visible catalog through
+// [Client.ListModels]. It is not a CLI, daemon, JSON-RPC server, credential
+// broker, Eino ChatModel wrapper, or provider-classification layer.
 //
 // JWT handling is intentionally passive. ExtractAccountID decodes claims so the
 // account identifier can be cached with credentials, but it does not verify the
@@ -19,9 +19,11 @@
 // body is not replayed to another target.
 //
 // The transport refreshes tokens 60 seconds before expiry and coalesces
-// concurrent refresh attempts with singleflight. It does not retry ordinary 401
-// responses as a refresh signal; refresh and invalid_grant recovery are handled
-// through the explicit token-refresh path.
+// concurrent refresh attempts with singleflight. Client.ListModels additionally
+// serializes its complete operation per Client so separate short-lived
+// transports cannot rotate the same stale refresh token concurrently. It does
+// not retry ordinary 401 responses as a refresh signal; refresh and
+// invalid_grant recovery are handled through the explicit token-refresh path.
 //
 // See README.md for tutorials and migration examples.
 package codexauth

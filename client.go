@@ -14,14 +14,18 @@ import (
 var defaultAppNameWarnOnce sync.Once
 
 // Client authenticates a single Codex consumer with its own credential
-// namespace and test seams.
+// namespace and test seams. ListModels calls made through one Client are
+// serialized; distinct Client values and processes are not coalesced.
 type Client struct {
 	appName      string
 	callbackPort int
 	logger       *slog.Logger
 	pathFunc     func() (string, error)
 	devicePrompt func(verificationURI, userCode string) error
-	endpoint     string // raw Options.Endpoint; parsed+validated in HTTPClient
+	endpoint     string // raw Options.Endpoint; parsed+validated in HTTPClient or ListModels
+
+	catalogGateOnce sync.Once
+	catalogGate     chan struct{}
 
 	browserAvailableCheck func() error
 	loginBrowserFn        func(context.Context) (Credentials, error)
@@ -52,6 +56,7 @@ func NewClient(opts Options) *Client {
 	}
 	c.loginBrowserFn = c.LoginBrowser
 	c.loginDeviceFn = c.LoginDevice
+	c.initCatalogGate()
 	if opts.CredentialPath != "" {
 		c.pathFunc = func() (string, error) { return opts.CredentialPath, nil }
 	}
@@ -82,14 +87,17 @@ type Options struct {
 	// Endpoint overrides the Responses-API URL that the transport rewrites every
 	// request to. Empty preserves the default (CodexEndpoint,
 	// https://chatgpt.com/backend-api/codex/responses). The value is parsed and
-	// validated lazily in HTTPClient (not NewClient): it must be an absolute URL
-	// with scheme http or https. As a safety rail, a cleartext http:// endpoint is
-	// permitted only for loopback hosts (127.0.0.0/8, ::1, localhost) so a bearer
-	// token is never sent in plaintext to a remote host.
+	// validated lazily in HTTPClient or ListModels (not NewClient): it must be an
+	// absolute URL with scheme http or https. ListModels derives a sibling models
+	// route by normalizing trailing slashes and replacing the final path segment
+	// with "models". As a safety rail, a cleartext http:// endpoint is permitted
+	// only for loopback hosts (127.0.0.0/8, ::1, localhost) so a bearer token is
+	// never sent in plaintext to a remote host.
 	//
 	// Note: only Scheme, Host, and Path from Endpoint are used. Any query string
-	// embedded in Endpoint is silently dropped; the caller's query string is
-	// preserved unchanged.
+	// embedded in Endpoint is silently dropped; HTTPClient preserves the caller's
+	// query string unchanged, while ListModels supplies only its client_version
+	// query. ListModels also drops any Endpoint fragment.
 	//
 	// Redirect caveat: when Endpoint uses cleartext http:// (loopback only), the
 	// server must respond directly (e.g. 200 with the SSE body) and must NOT issue
@@ -111,6 +119,26 @@ type Options struct {
 	// directory to owner-only on first write. Use t.TempDir() in tests.
 	// Reads do not mutate anything.
 	CredentialPath string
+}
+
+func (c *Client) initCatalogGate() {
+	c.catalogGateOnce.Do(func() {
+		c.catalogGate = make(chan struct{}, 1)
+		c.catalogGate <- struct{}{}
+	})
+}
+
+func (c *Client) acquireCatalogGate(ctx context.Context) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	c.initCatalogGate()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.catalogGate:
+		return func() { c.catalogGate <- struct{}{} }, nil
+	}
 }
 
 // StatusInfo describes the local credential-store state for a Client.

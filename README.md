@@ -52,6 +52,49 @@ defer resp.Body.Close()
 injects the bearer token, refreshes tokens before expiry, and preserves the
 Codex-specific `originator` and `session_id` header casing.
 
+## Account-aware model catalog
+
+`Client.ListModels` fetches the current model picker catalog for the
+authenticated ChatGPT account without exposing credentials or the backend wire
+schema:
+
+```go
+models, err := auth.ListModels(ctx, "your-catalog-compatibility-value")
+if errors.Is(err, codexauth.ErrNotLoggedIn) {
+	log.Fatal("not logged in")
+}
+if err != nil {
+	log.Fatal(err)
+}
+for _, model := range models {
+	fmt.Printf("%s: %s\n", model.Slug, model.DisplayName)
+}
+```
+
+The caller supplies `clientVersion` as an opaque, non-secret Codex catalog
+compatibility value. The library passes the exact value through as the
+`client_version` query parameter; it does not assume that an application or Go
+module version has the backend's intended meaning.
+
+Results depend on the authenticated account and the server's current catalog.
+Only picker-visible entries are returned, stable-sorted by ascending server
+priority. Each model's reasoning options stay in server order, and effort names
+are open strings so future values remain usable.
+
+Every call performs a fresh catalog request plus any token refresh required for
+stale credentials; the library does not cache catalog data. A caller may cache
+within one UI session, but should refetch after login or account changes and
+when the user explicitly refreshes. Catalog calls through one `Client` are
+serialized to protect rotating refresh tokens. Calls through separate clients
+or processes are not coalesced.
+
+Cancellation is prompt when credentials are fresh. If credentials are stale,
+the existing detached refresh and safe persistence step may finish before the
+call returns; cancellation still prevents the subsequent catalog request.
+Non-success catalog errors can be inspected with `errors.As` to
+`*ModelCatalogHTTPError`. Catalog and catalog-scoped refresh errors never expose
+network response bodies.
+
 ## Login Flows
 
 `Client.Login(ctx, false)` prefers the browser OAuth + PKCE flow when a browser
@@ -113,8 +156,10 @@ credential file without touching `HOME`/`XDG`. The file must contain a valid
 
 **Safety rail:** cleartext `http://` is permitted only for loopback hosts
 (`127.0.0.0/8`, `::1`, `localhost`) so bearer tokens are never sent in
-plaintext to a remote host. `HTTPClient` returns `ErrInsecureEndpoint` for any
-other `http://` endpoint. `https://` to any host is always allowed.
+plaintext to a remote host. `HTTPClient` and `ListModels` return
+`ErrInsecureEndpoint` for any other `http://` endpoint. `https://` to any host
+is always allowed. `ListModels` normalizes trailing slashes, replaces the final
+Responses path component with `models`, and drops endpoint query/fragment data.
 
 **Redirect caveat:** when using a loopback `http://` endpoint, your fake server
 must respond directly (e.g. `200` with the SSE body). The client hard-refuses

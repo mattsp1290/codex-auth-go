@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"path"
 	"strings"
 )
 
@@ -20,8 +21,9 @@ func mustParseURL(raw string) *url.URL {
 	return u
 }
 
-// ErrInsecureEndpoint is returned by HTTPClient when Options.Endpoint uses
-// cleartext http:// to a non-loopback host (which would leak the bearer token).
+// ErrInsecureEndpoint is returned by HTTPClient or ListModels when
+// Options.Endpoint uses cleartext http:// to a non-loopback host (which would
+// leak the bearer token).
 var ErrInsecureEndpoint = errors.New("codexauth: refusing cleartext http endpoint to non-loopback host")
 
 // parseEndpoint parses and validates an Options.Endpoint override.
@@ -46,6 +48,33 @@ func parseEndpoint(raw string) (*url.URL, error) {
 		return nil, fmt.Errorf("%w: %q", ErrInsecureEndpoint, raw)
 	}
 	return u, nil
+}
+
+// modelsEndpoint derives the fixed sibling models route from the configured
+// Responses endpoint. Endpoint query, fragment, user info, and escaped-path
+// metadata are intentionally discarded.
+func modelsEndpoint(rawResponsesEndpoint string) (string, error) {
+	u, err := parseEndpoint(rawResponsesEndpoint)
+	if err != nil {
+		return "", err
+	}
+	if u == nil {
+		u = defaultCodexURL
+	}
+
+	derived := *u
+	trimmedPath := strings.TrimRight(derived.Path, "/")
+	if trimmedPath == "" {
+		derived.Path = "/models"
+	} else {
+		derived.Path = path.Join(path.Dir(trimmedPath), "models")
+	}
+	derived.User = nil
+	derived.RawPath = ""
+	derived.RawQuery = ""
+	derived.ForceQuery = false
+	derived.Fragment = ""
+	return derived.String(), nil
 }
 
 // isLoopbackHost reports whether host is a loopback address.

@@ -13,8 +13,9 @@ import (
 	"time"
 )
 
-// ErrNotLoggedIn is returned by HTTPClient when no OpenAI credentials are stored.
-// Callers should check with errors.Is and prompt the user to run Login.
+// ErrNotLoggedIn is returned by HTTPClient or ListModels when no OpenAI
+// credentials are stored. Callers should check with errors.Is and prompt the
+// user to run Login.
 var ErrNotLoggedIn = errors.New("codexauth: not logged in")
 
 // ErrPlanNotIncluded marks Codex API responses where the authenticated account
@@ -26,6 +27,8 @@ var ErrPlanNotIncluded = errors.New("codexauth: plan not included")
 var ErrQuotaExceeded = errors.New("codexauth: quota exceeded")
 
 // ErrRefreshFailed marks failures while refreshing stored Codex credentials.
+// ListModels uses it for remote refresh failures whose details are not safe to
+// expose; recognized OAuth errors remain inspectable as a sanitized AuthError.
 var ErrRefreshFailed = errors.New("codexauth: refresh failed")
 
 // httpDoer is the minimal interface satisfied by *http.Client, allowing tests
