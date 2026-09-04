@@ -46,3 +46,23 @@ func ExampleNewClient() {
 
 	// Output:
 }
+
+func ExampleClient_ListModels() {
+	if false {
+		ctx := context.Background()
+		auth := codexauth.NewClient(codexauth.Options{AppName: "yourapp"})
+		models, err := auth.ListModels(ctx, "your-catalog-compatibility-value")
+		if errors.Is(err, codexauth.ErrNotLoggedIn) {
+			log.Fatal("not logged in")
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, model := range models {
+			_ = model.Slug
+			_ = model.SupportedReasoningEfforts
+		}
+	}
+
+	// Output:
+}

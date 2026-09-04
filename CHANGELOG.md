@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-04
+
+### Added
+
+- Added `Client.ListModels(ctx, clientVersion)` and the
+  `ModelCatalogEntry`, `ReasoningEffortOption`, and `ModelCatalogHTTPError`
+  public types for the authenticated account's picker-visible model catalog.
+- Catalog results are stable-sorted by ascending server priority, preserve
+  server reasoning-option order, and accept future non-empty reasoning effort
+  strings and additive JSON fields.
+- Catalog calls reuse `Options.Endpoint`, `Options.CredentialPath`, bearer and
+  account headers, refresh persistence, redirect refusal, and the loopback-only
+  cleartext safety rail. Calls through one `Client` are serialized; catalog data
+  is not cached.
+
+### Security
+
+- Catalog response bodies are bounded to 8 MiB after decompression and never
+  included in errors. Catalog-scoped refresh errors and logs redact token
+  response descriptions, bodies, and unrecognized OAuth codes.
+- Updated the module and CI toolchain pin from Go 1.26.3 to Go 1.26.8 to include
+  the current Go 1.26 security fixes.
+
 ## [0.3.0] - 2026-06-06
 
 ### Added

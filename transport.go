@@ -84,6 +84,11 @@ type codexTransport struct {
 	appName string
 
 	logger *slog.Logger
+
+	// safeRefreshErrors is enabled only for the high-level catalog API. It
+	// prevents token-endpoint response content from escaping through errors or
+	// logs while leaving HTTPClient's existing behavior unchanged.
+	safeRefreshErrors bool
 }
 
 // newCodexTransport constructs a codexTransport with required fields validated
@@ -180,6 +185,9 @@ func (t *codexTransport) ensureFresh(_ context.Context) error {
 						t.creds = Credentials{}
 						t.mu.Unlock()
 						t.logInvalidGrant("load_error", false, err)
+						if t.safeRefreshErrors {
+							return nil, fmt.Errorf("codexauth: refresh credential load: %w", errors.Join(lerr, safeRemoteRefreshError(err)))
+						}
 						return nil, fmt.Errorf("codexauth: refresh token revoked (invalid_grant): %w", err)
 					}
 					if loaded.Access != "" && loaded.Refresh != oldRefresh {
@@ -204,7 +212,13 @@ func (t *codexTransport) ensureFresh(_ context.Context) error {
 				t.creds = Credentials{}
 				t.mu.Unlock()
 				t.logInvalidGrant("wiped_creds", false, err)
+				if t.safeRefreshErrors {
+					return nil, fmt.Errorf("codexauth: refresh token revoked: %w", safeRemoteRefreshError(err))
+				}
 				return nil, fmt.Errorf("codexauth: refresh token revoked (invalid_grant): %w", err)
+			}
+			if t.safeRefreshErrors {
+				return nil, fmt.Errorf("codexauth: refresh: %w", safeRemoteRefreshError(err))
 			}
 			return nil, fmt.Errorf("codexauth: refresh: %w", err)
 		}
@@ -232,11 +246,33 @@ func (t *codexTransport) logInvalidGrant(branchID string, hasCredsAfter bool, er
 	if logger == nil {
 		logger = slog.Default()
 	}
-	logger.Warn("codexauth invalid_grant recovery",
-		"branch_id", branchID,
-		"has_creds_after", hasCredsAfter,
-		"error", err,
-	)
+	if t.safeRefreshErrors {
+		logger.Warn("codexauth invalid_grant recovery",
+			"branch_id", branchID,
+			"has_creds_after", hasCredsAfter,
+			"oauth_code", "invalid_grant",
+		)
+		return
+	}
+	logger.Warn("codexauth invalid_grant recovery", "branch_id", branchID, "has_creds_after", hasCredsAfter, "error", err)
+}
+
+func safeRemoteRefreshError(err error) error {
+	var authErr *AuthError
+	if errors.As(err, &authErr) && isSafeOAuthErrorCode(authErr.Code) {
+		return &AuthError{Code: authErr.Code}
+	}
+	return ErrRefreshFailed
+}
+
+func isSafeOAuthErrorCode(code string) bool {
+	switch code {
+	case "invalid_grant", "invalid_client", "invalid_request", "unauthorized_client",
+		"unsupported_grant_type", "invalid_scope", "temporarily_unavailable":
+		return true
+	default:
+		return false
+	}
 }
 
 // RoundTrip implements http.RoundTripper. For every request it:
@@ -257,6 +293,11 @@ func (t *codexTransport) logInvalidGrant(branchID string, hasCredsAfter bool, er
 func (t *codexTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err := t.ensureFresh(req.Context()); err != nil {
 		return nil, err
+	}
+	if t.safeRefreshErrors {
+		if err := req.Context().Err(); err != nil {
+			return nil, err
+		}
 	}
 
 	clone := req.Clone(req.Context())
